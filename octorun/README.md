@@ -8,4 +8,4 @@ A decently recent version of node
 
 # How to run
 
-Run `run.sh`
+`./run.sh --path [absolute or relative path to octorun directory] --out [where to put the zip and md5 files]`

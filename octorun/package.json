@@ -1,0 +1,33 @@
+{
+    "name": "package-octorun",
+    "version": "1.0.0",
+    "main": "package-octorun.js",
+    "repository": {
+        "url": "https://github.com/github-for-unity/packaging"
+    },
+    "license": "MIT",
+    "directories": {
+        "lib": "lib"
+    },
+    "dependencies": {
+        "@types/command-line-args": "^5.0.0",
+        "@types/command-line-usage": "^5.0.1",
+        "@types/jszip": "^3.1.4",
+        "@types/md5": "^2.1.32",
+        "@types/node": "^10.5.2",
+        "async-file": "^2.0.2",
+        "command-line-args": "^5.0.2",
+        "command-line-usage": "^5.0.5",
+        "jszip": "^3.1.5",
+        "md5": "^2.2.1",
+        "ts-node": "^7.0.0",
+        "typescript": "^2.9.2"
+    },
+    "devDependencies": {
+        "tslint": "^5.11.0",
+        "tslint-config-prettier": "^1.13.0"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    }
+}
