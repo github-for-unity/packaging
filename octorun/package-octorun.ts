@@ -115,7 +115,7 @@ const octorunMd5Path: string = join(options.out, 'octorun.zip.md5');
     //     console.log(file);
     // }
 
-    const output = await promisify(exec)('git log HEAD~1..HEAD --format=%cI', { cwd: octorunPath });
+    const output = await promisify(exec)('git log -n1 --format=%cI .', { cwd: octorunPath });
     const date = new Date(output.stdout.trim());
     let zip = await walker.zip(date, octorunPath, 'octorun');
     zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true })
