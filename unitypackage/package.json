@@ -1,0 +1,22 @@
+{
+  "name": "unitypackage",
+  "version": "1.0.0",
+  "description": "Create .unitypackage assets",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@types/command-line-args": "^5.0.0",
+    "@types/command-line-usage": "^5.0.1",
+    "@types/jszip": "^3.1.4",
+    "@types/md5": "^2.1.33",
+    "async-file": "^2.0.2",
+    "command-line-args": "^5.0.2",
+    "command-line-usage": "^5.0.5",
+    "jszip": "^3.1.5",
+    "md5": "^2.2.1",
+    "ts-mocha": "^2.0.0",
+    "ts-node": "^7.0.1",
+    "tslint-config-prettier": "^1.15.0",
+    "typescript": "^3.0.3"
+  }
+}
