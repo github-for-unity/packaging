@@ -1,13 +1,21 @@
 #!/usr/bin/env node_modules/.bin/ts-node
 
-import JSZip from 'jszip';
-import * as fs from 'async-file';
+import tar from 'tar';
+import asyncfile from 'async-file';
 import md5 from 'md5';
-import { resolve, join } from 'path';
+import { resolve, join, relative } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import commandLineArgs from 'command-line-args';
 import commandLineUsage from 'command-line-usage';
+import { Readable } from 'stream';
+import readdir from 'recursive-readdir';
+import os from 'os';
+import yaml from 'js-yaml';
+import tmp from 'tmp';
+import fs from 'fs';
+import path from 'path';
+import uniqBy from 'lodash.uniqby';
 
 interface IEntry {
     isDirectory: boolean;
@@ -15,39 +23,72 @@ interface IEntry {
 }
 
 class TreeWalker {
-    zip(date: Date, path: string, basePath: string): Promise<JSZip> {
-        let zip = new JSZip();
-        if (basePath !== '') {
-            zip.file(basePath, '', {
-                dir: true,
-                date: date,
-            });
-        }
-        return this.runzip(zip, date, path, basePath);
-    }
+    async package(sourcePath: string) {
+        return readdir(sourcePath, [
+            (file: string, stats: asyncfile.Stats) =>
+                !relative(sourcePath, file).startsWith('Assets') || file.endsWith('.pdb') || file.endsWith('.meta'),
+        ]).then(f => {
+            return new Promise<string>((resolve, reject) =>
+                tmp.dir({ unsafeCleanup: true }, (err, path, _) => resolve(path))
+            )
+                .then(async tmp => {
+                    const dirs = new Set<string>();
+                    for (const file of f) {
+                        const rel = relative(sourcePath, file);
+                        const metafile = file + '.meta';
+                        if (!(await asyncfile.exists(metafile))) {
+                            continue;
+                        }
+                        const meta = await asyncfile.readTextFile(metafile);
+                        const yamlmeta: { guid: string } = yaml.safeLoad(meta, { json: true });
+                        const targetdir = join(tmp, yamlmeta.guid);
+                        const targetasset = join(targetdir, 'asset');
+                        const targetmeta = join(targetdir, 'asset.meta');
+                        const targetname = join(targetdir, 'pathname');
+                        const targetpreview = join(targetdir, 'preview.png');
+                        await asyncfile.mkdir(targetdir);
+                        await asyncfile.writeTextFile(targetname, rel);
+                        fs.copyFileSync(file, targetasset);
+                        fs.copyFileSync(metafile, targetmeta);
+                        if (path.extname(file) === '.png') {
+                            fs.copyFileSync(join(sourcePath, 'preview.png'), targetpreview);
+                        }
 
-    private runzip(zip: JSZip, date: Date, path: string, base: string): Promise<JSZip> {
-        return (async () => {
-            const files = await fs.readdir(path);
-            for (let i = 0; i < files.length; i++) {
-                const filename: string = files[i];
-                const fileFromBase: string = join(base, filename);
-                const file: string = join(path, filename);
-                const stat = await fs.stat(file);
-                if (stat.isDirectory()) {
-                    zip.file(fileFromBase, '', {
-                        dir: true,
-                        date: date,
-                    });
-                    await this.runzip(zip, date, file, fileFromBase);
-                } else {
-                    zip.file(fileFromBase, fs.readFile(file), {
-                        date: date,
-                    });
-                }
-            }
-            return zip;
-        })();
+                        const dir = path.dirname(file);
+                        if (!dirs.has(dir)) {
+                            dirs.add(dir);
+                        }
+                    }
+
+                    for (const dir of dirs.keys()) {
+                        const rel = relative(sourcePath, dir);
+                        const metafile = dir + '.meta';
+                        const meta = await asyncfile.readTextFile(metafile);
+                        const yamlmeta: { guid: string } = yaml.safeLoad(meta, { json: true });
+                        const targetdir = join(tmp, yamlmeta.guid);
+                        const targetmeta = join(targetdir, 'asset.meta');
+                        const targetname = join(targetdir, 'pathname');
+                        await asyncfile.mkdir(targetdir);
+                        fs.copyFileSync(metafile, targetmeta);
+                        await asyncfile.writeTextFile(targetname, rel);
+                    }
+                    return tmp;
+                })
+                .then(x => {
+                    return readdir(x)
+                        .then(list => list.map(f => relative(x, f)))
+                        .then(list => {
+                            return tar.create(
+                                {
+                                    gzip: true,
+                                    cwd: x,
+                                    noDirRecurse: true,
+                                },
+                                list
+                            );
+                        });
+                });
+        });
     }
 }
 
@@ -87,28 +128,25 @@ const sections = [
 
 const options = commandLineArgs(optionDefinitions);
 
-if (options.path === undefined || !fs.exists(options.path)) {
+if (!options.path || !asyncfile.exists(options.path) || !options.file || !options.out) {
     console.error(commandLineUsage(sections));
     process.exit(-1);
 }
 
 const sourcePath: string = resolve(options.path);
-const targetZipPath: string = join(options.out, options.file, '.unitypackage');
-const targetMd5Path: string = join(options.out, options.file, '.unitypackage.md5');
+const targetZipPath: string = join(options.out, `${options.file}.unitypackage`);
+const targetMd5Path: string = join(options.out, `${options.file}.unitypackage.md5`);
 
 (async () => {
     const walker = new TreeWalker();
 
-    const output = await promisify(exec)('git log -n1 --format=%cI .', { cwd: sourcePath });
-    const date = new Date(output.stdout.trim());
+    let zip = await walker.package(sourcePath);
 
-    let zip = await walker.zip(date, sourcePath, '');
-
-    zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true })
-    .pipe(fs.createWriteStream(targetZipPath))
-    .on('finish', async () => {
-        const hash = md5(await fs.readFile(targetZipPath));
-        await fs.writeTextFile(targetMd5Path, hash);
-        console.log(`${targetZipPath} and ${targetMd5Path} created`);
-    });    
+    asyncfile.mkdirp(path.dirname(targetZipPath)).then(() => {
+        zip.pipe(asyncfile.createWriteStream(targetZipPath)).on('finish', async () => {
+            const hash = md5(await asyncfile.readFile(targetZipPath));
+            await asyncfile.writeTextFile(targetMd5Path, hash);
+            console.log(`${targetZipPath} and ${targetMd5Path} created`);
+        });
+    });
 })();
