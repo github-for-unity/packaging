@@ -80,6 +80,11 @@ const optionDefinitions = [
         description: 'Path to octorun directory',
     },
     {
+        name: 'source',
+        typeLabel: '{underline directory}',
+        description: 'Path to OctorunInstaller.cs',
+    },
+    {
         name: 'out',
         typeLabel: '{underline directory}',
         description: 'Where to save the zip and md5 files',
@@ -99,14 +104,16 @@ const sections = [
 
 const options = commandLineArgs(optionDefinitions);
 
-if (options.path === undefined || !fs.exists(options.path)) {
+if (!options.path || !fs.exists(options.path) || !options.source || !fs.exists(options.source)) {
     console.error(commandLineUsage(sections));
     process.exit(-1);
 }
 
 const octorunPath: string = resolve(options.path);
+const octorunInstallerSource: string = join(resolve(options.source), 'OctorunInstaller.cs');
 const octorunZipPath: string = join(options.out, 'octorun.zip');
 const octorunMd5Path: string = join(options.out, 'octorun.zip.md5');
+const octorunVersionFile: string = join(octorunPath, 'version');
 
 (async () => {
     const walker = new TreeWalker();
@@ -115,8 +122,13 @@ const octorunMd5Path: string = join(options.out, 'octorun.zip.md5');
     //     console.log(file);
     // }
 
-    const output = await promisify(exec)('git log -n1 --format=%cI .', { cwd: octorunPath });
-    const date = new Date(output.stdout.trim());
+    const strdate = await promisify(exec)('git log -n1 --format=%cI .', { cwd: octorunPath });
+    const date = new Date(strdate.stdout.trim());
+    const strhash = await promisify(exec)('git log -n1 --format=%h .', { cwd: octorunPath });
+    await fs.writeTextFile(octorunVersionFile, strhash.stdout.trim());
+    let source = await fs.readTextFile(octorunInstallerSource);
+    source = source.replace(/public const string PackageVersion = "[^\"]*";/g, `public const string PackageVersion = "${strhash.stdout.trim()}";`);
+    await fs.writeFile(octorunInstallerSource, source);
     let zip = await walker.zip(date, octorunPath, 'octorun');
     zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true })
         .pipe(fs.createWriteStream(octorunZipPath))
