@@ -1,6 +1,5 @@
 node_modules
 *.zip
 *.zip.md5
-*.js
 *.map
 *.log

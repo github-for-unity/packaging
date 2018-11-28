@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "license": "MIT",
   "scripts": {
-    "start": "node_modules/.bin/ts-node src/index.ts"
+    "start": "ts-node src/index.ts"
   },
   "dependencies": {
     "@types/command-line-args": "^5.0.0",

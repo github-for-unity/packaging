@@ -28,6 +28,7 @@ class TreeWalker {
             (file: string, stats: asyncfile.Stats) =>
                 !relative(sourcePath, file).startsWith('Assets') || file.endsWith('.pdb') || file.endsWith('.meta'),
         ]).then(f => {
+            const outputDirs = new Set<string>();
             return new Promise<string>((resolve, reject) =>
                 tmp.dir({ unsafeCleanup: true }, (err, path, _) => resolve(path))
             )
@@ -58,11 +59,18 @@ class TreeWalker {
                         if (!dirs.has(dir)) {
                             dirs.add(dir);
                         }
+                        if (!outputDirs.has(targetdir)) {
+                            outputDirs.add(targetdir);
+                        }
                     }
 
                     for (const dir of dirs.keys()) {
                         const rel = relative(sourcePath, dir);
                         const metafile = dir + '.meta';
+                        if (!(await asyncfile.exists(metafile))) {
+                            continue;
+                        }
+
                         const meta = await asyncfile.readTextFile(metafile);
                         const yamlmeta: { guid: string } = yaml.safeLoad(meta, { json: true });
                         const targetdir = join(tmp, yamlmeta.guid);
@@ -71,17 +79,25 @@ class TreeWalker {
                         await asyncfile.mkdir(targetdir);
                         fs.copyFileSync(metafile, targetmeta);
                         await asyncfile.writeTextFile(targetname, rel);
+                        const dirname = path.dirname(targetname);
+                        if (!outputDirs.has(dirname)) {
+                            outputDirs.add(dirname);
+                        }
                     }
                     return tmp;
                 })
-                .then(x => {
-                    return readdir(x)
-                        .then(list => list.map(f => relative(x, f)))
+                .then(tmp => {
+                    return readdir(tmp)
+                        .then(list => {
+                            list = Array.from(outputDirs).concat(list);
+                            list = list.map(f => `./${relative(tmp, f)}`);
+                            return ['./', ...list];
+                        })
                         .then(list => {
                             return tar.create(
                                 {
                                     gzip: true,
-                                    cwd: x,
+                                    cwd: tmp,
                                     noDirRecurse: true,
                                 },
                                 list
