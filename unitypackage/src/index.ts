@@ -3,7 +3,7 @@
 import tar from 'tar';
 import asyncfile from 'async-file';
 import md5 from 'md5';
-import { resolve, join, relative } from 'path';
+import { resolve, join, relative, dirname } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import commandLineArgs from 'command-line-args';
@@ -78,7 +78,7 @@ class TreeWalker {
                         const targetname = join(targetdir, 'pathname');
                         await asyncfile.mkdir(targetdir);
                         fs.copyFileSync(metafile, targetmeta);
-                        await asyncfile.writeTextFile(targetname, rel);
+                        await asyncfile.writeTextFile(targetname, rel.replace('\\', '/'));
                         const dirname = path.dirname(targetname);
                         if (!outputDirs.has(dirname)) {
                             outputDirs.add(dirname);
@@ -89,9 +89,15 @@ class TreeWalker {
                 .then(tmp => {
                     return readdir(tmp)
                         .then(list => {
-                            list = Array.from(outputDirs).concat(list);
-                            list = list.map(f => `./${relative(tmp, f)}`);
-                            return ['./', ...list];
+                            const entries = new Set<string>();
+                            for (var entry of list) {
+                                const path = relative(tmp, entry);
+                                const dirn = dirname(path);
+                                if (!entries.has(dirn))
+                                    entries.add(dirn);
+                                entries.add(path);
+                            }
+                            return Array.from(entries).sort();
                         })
                         .then(list => {
                             return tar.create(
