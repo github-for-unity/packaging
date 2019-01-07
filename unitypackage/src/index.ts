@@ -78,7 +78,7 @@ class TreeWalker {
                         const targetname = join(targetdir, 'pathname');
                         await asyncfile.mkdir(targetdir);
                         fs.copyFileSync(metafile, targetmeta);
-                        await asyncfile.writeTextFile(targetname, rel.replace('\\', '/'));
+                        await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, "/"));
                         const dirname = path.dirname(targetname);
                         if (!outputDirs.has(dirname)) {
                             outputDirs.add(dirname);
