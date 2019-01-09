@@ -1,0 +1,30 @@
+{
+  "name": "update-release-feed",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "license": "MIT",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@octokit/rest": "^16.7.0",
+    "@types/command-line-args": "^5.0.0",
+    "@types/command-line-usage": "^5.0.1",
+    "@types/node": "^10.12.18",
+    "@types/recursive-readdir": "^2.2.0",
+    "@types/request": "^2.48.1",
+    "@types/request-promise": "^4.1.42",
+    "@types/tmp": "^0.0.33",
+    "async-file": "^2.0.2",
+    "aws-sdk": "^2.384.0",
+    "command-line-args": "^5.0.2",
+    "command-line-usage": "^5.0.5",
+    "recursive-readdir": "^2.2.2",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.2",
+    "tmp": "^0.0.33",
+    "ts-node": "^7.0.1",
+    "tslint-config-prettier": "^1.17.0",
+    "typescript": "^3.2.2"
+  }
+}
