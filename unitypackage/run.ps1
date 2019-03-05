@@ -21,7 +21,9 @@ Param(
     [string]
     $OutputFolder,
     [string]
-    $PackageName
+    $PackageName,
+    [switch]
+    $Trace = $false
 )
 
 Set-StrictMode -Version Latest
@@ -33,7 +35,7 @@ if ($Trace) {
 
 Push-Location $scriptsDirectory
 
-Run-Command -Fatal { & node .\yarn.js install --prefer-offline }
+Run-Command -Fatal { & node ..\yarn.js install --prefer-offline }
 Run-Command -Fatal { & node ..\yarn.js start --path $PathToPackage --out $OutputFolder --file $PackageName }
 
 Pop-Location
