@@ -48,7 +48,7 @@ class TreeWalker {
                         const targetname = join(targetdir, 'pathname');
                         const targetpreview = join(targetdir, 'preview.png');
                         await asyncfile.mkdir(targetdir);
-                        await asyncfile.writeTextFile(targetname, rel);
+                        await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
                         fs.copyFileSync(file, targetasset);
                         fs.copyFileSync(metafile, targetmeta);
                         if (path.extname(file) === '.png') {
@@ -78,7 +78,7 @@ class TreeWalker {
                         const targetname = join(targetdir, 'pathname');
                         await asyncfile.mkdir(targetdir);
                         fs.copyFileSync(metafile, targetmeta);
-                        await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, "/"));
+                        await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
                         const dirname = path.dirname(targetname);
                         if (!outputDirs.has(dirname)) {
                             outputDirs.add(dirname);
