@@ -37,8 +37,7 @@ Push-Location $scriptsDirectory
 
 try {
 
-Run-Command -Fatal { & node ..\yarn.js install --prefer-offline }
-Run-Command -Fatal { & node ..\yarn.js start --path $PathToPackage --out $OutputFolder --file $PackageName --project }
+Run-Command -Fatal { & node ..\yarn.js start --path $PathToPackage --out $OutputFolder --file $PackageName }
 
 } finally {
     Pop-Location

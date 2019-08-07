@@ -69,10 +69,6 @@ class TreeWalker {
 
 		this.listener.subscribe(async entry => {
 			if (entry.isDir) {
-				const relativeSourceDir = p.relative(this.path, entry.file);
-				const targetDir = p.join(to, relativeSourceDir);
-                await asyncfile.mkdirp(targetDir);
-                
                 const rel = p.relative(sourcePath, entry.file);
                 const metafile = entry.file + '.meta';
                 if (!(await asyncfile.exists(metafile))) {
@@ -88,7 +84,7 @@ class TreeWalker {
                 fs.copyFileSync(metafile, targetmeta);
                 await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
 			} else {
-				const relativeSourceDir = p.relative(this.path, p.dirname(entry.file));
+				// const relativeSourceDir = p.relative(this.path, p.dirname(entry.file));
                 const rel = p.relative(this.path, entry.file);
                 const metafile = entry.file + '.meta';
                 if (!(await asyncfile.exists(metafile))) {
@@ -101,6 +97,7 @@ class TreeWalker {
                 const targetmeta = p.join(targetdir, 'asset.meta');
                 const targetname = p.join(targetdir, 'pathname');
                 const targetpreview = p.join(targetdir, 'preview.png');
+
                 await asyncfile.mkdir(targetdir);
                 await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
                 fs.copyFileSync(entry.file, targetasset);
@@ -122,7 +119,7 @@ class TreeWalker {
 			toArray())
 			.toPromise();
 
-		console.log(`Tar-ing ${this.path}...`);
+		console.log(`Tar-ing ${this.path} ${list}...`);
 		return tar.create({
 			gzip: true,
 			cwd: this.path,
@@ -272,17 +269,19 @@ const targetMd5Path: string = p.join(options.out, `${options.file}.unitypackage.
 
 (async () => {
     const packagedPath = await TreeWalker.getTempDir();
-    await TreeWalker.copy(sourcePath, packagedPath, ["/*", "/*/", "!/Assets/", "*.meta", "*.pdb"]);
-
-    let zip = await new TreeWalker(packagedPath).createTar();
+    await TreeWalker.copy(sourcePath, packagedPath, [
+        (file: FileEntry) =>  !(p.relative(sourcePath, file.file).startsWith("Assets")) || file.file.endsWith(".pdb") || file.file.endsWith(".meta")
+    ]);
 
     await asyncfile.mkdirp(p.dirname(targetZipPath))
 
-    zip
-     .pipe(asyncfile.createWriteStream(targetZipPath))
+    await asyncfile
+		.mkdirp(p.dirname(targetZipPath))
+        .then(() => new TreeWalker(packagedPath).createTar())
+        .then(tar => tar.pipe(asyncfile.createWriteStream(targetZipPath))
      .on('finish', async () => {
         const hash = md5(await asyncfile.readFile(targetZipPath));
         await asyncfile.writeTextFile(targetMd5Path, hash);
         console.log(`${targetZipPath} and ${targetMd5Path} created`);
-    });
+    }));
 })();
