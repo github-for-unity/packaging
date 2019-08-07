@@ -35,7 +35,11 @@ if ($Trace) {
 
 Push-Location $scriptsDirectory
 
-Run-Command -Fatal { & node ..\yarn.js install --prefer-offline }
-Run-Command -Fatal { & node ..\yarn.js start --path $PathToPackage --out $OutputFolder --file $PackageName }
+try {
 
-Pop-Location
+Run-Command -Fatal { & node ..\yarn.js install --prefer-offline }
+Run-Command -Fatal { & node ..\yarn.js start --path $PathToPackage --out $OutputFolder --file $PackageName --project }
+
+} finally {
+    Pop-Location
+}

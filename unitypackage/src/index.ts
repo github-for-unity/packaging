@@ -1,21 +1,21 @@
 #!/usr/bin/env node_modules/.bin/ts-node
 
-import tar from 'tar';
-import asyncfile from 'async-file';
-import md5 from 'md5';
-import { resolve, join, relative, dirname } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import commandLineArgs from 'command-line-args';
-import commandLineUsage from 'command-line-usage';
+import * as tar from 'tar';
+import * as asyncfile from 'async-file';
+import * as md5 from 'md5';
+import * as commandLineArgs from 'command-line-args';
+import * as commandLineUsage from 'command-line-usage';
 import { Readable } from 'stream';
-import readdir from 'recursive-readdir';
-import os from 'os';
-import yaml from 'js-yaml';
-import tmp from 'tmp';
-import fs from 'fs';
-import path from 'path';
-import uniqBy from 'lodash.uniqby';
+import * as yaml from 'js-yaml';
+import * as fs from 'fs';
+import { ReplaySubject, defer, pipe, Observable, Observer, TeardownLogic, Subject, generate, of, from } from 'rxjs';
+import { toArray, take, pluck, map, filter, first, takeWhile, skipWhile } from 'rxjs/operators';
+import * as p from 'path';
+import * as sizeOf from "image-size";
+import { exec, execSync } from 'child_process';
+import { readdir, Ignores, FileEntry } from './RecursiveReaddir';
+import { readAllLines, readLines, readLinesFromFile } from './read-lines';
+import { copyFile, generateThumbnail, tmpDir } from './helpers';
 
 interface IEntry {
     isDirectory: boolean;
@@ -23,9 +23,119 @@ interface IEntry {
 }
 
 class TreeWalker {
+	private obs: Observable<FileEntry>;
+	private _listener = new ReplaySubject<FileEntry>();
+	private running = false;
+
+	public constructor(public path: string, private ignores?: Ignores) {
+		this.obs = new Observable((observer: Observer<FileEntry>) => {
+			readdir(this.path, ignores || [], (error, file) => {
+				if (error) {
+					observer.error(error);
+				} else if (file) {
+					observer.next(file);
+				} else {
+					observer.complete();
+				}
+				return false;
+			});
+		});
+	}
+
+	public static walk(path: string, ignores?: Ignores) {
+		return new TreeWalker(path, ignores).walk();
+	}
+
+	public static copy = (from: string, to: string, ignores?: Ignores) => {
+		return new TreeWalker(from, ignores).copy(to);
+	}
+
+	private get listener() {
+		if (!this.running) {
+			this.obs.subscribe(val => { this._listener.next(val); }, err => this._listener.error(err), () => { this._listener.complete() });
+			this.running = true;
+		}
+		return this._listener.asObservable();
+	}
+
+	public static getTempDir = () => tmpDir({ prefix: 'unitypackaging-', unsafeCleanup: true });
+
+	private walk = () => {
+		return this.listener;
+	}
+
+	private copy = (to: string) => {
+		const ret = new Subject();
+
+		this.listener.subscribe(async entry => {
+			if (entry.isDir) {
+				const relativeSourceDir = p.relative(this.path, entry.file);
+				const targetDir = p.join(to, relativeSourceDir);
+                await asyncfile.mkdirp(targetDir);
+                
+                const rel = p.relative(sourcePath, entry.file);
+                const metafile = entry.file + '.meta';
+                if (!(await asyncfile.exists(metafile))) {
+                    return;
+                }
+
+                const meta = await asyncfile.readTextFile(metafile);
+                const yamlmeta: { guid: string } = yaml.safeLoad(meta, { json: true });
+                const targetdir = p.join(to, yamlmeta.guid);
+                const targetmeta = p.join(targetdir, 'asset.meta');
+                const targetname = p.join(targetdir, 'pathname');
+                await asyncfile.mkdir(targetdir);
+                fs.copyFileSync(metafile, targetmeta);
+                await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
+			} else {
+				const relativeSourceDir = p.relative(this.path, p.dirname(entry.file));
+                const rel = p.relative(this.path, entry.file);
+                const metafile = entry.file + '.meta';
+                if (!(await asyncfile.exists(metafile))) {
+                    return;
+                }
+                const meta = await asyncfile.readTextFile(metafile);
+                const yamlmeta: { guid: string } = yaml.safeLoad(meta, { json: true });
+                const targetdir = p.join(to, yamlmeta.guid);
+                const targetasset = p.join(targetdir, 'asset');
+                const targetmeta = p.join(targetdir, 'asset.meta');
+                const targetname = p.join(targetdir, 'pathname');
+                const targetpreview = p.join(targetdir, 'preview.png');
+                await asyncfile.mkdir(targetdir);
+                await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
+                fs.copyFileSync(entry.file, targetasset);
+                fs.copyFileSync(metafile, targetmeta);
+                if (p.extname(entry.file) === '.png') {
+                    fs.copyFileSync(p.join(sourcePath, 'preview.png'), targetpreview);
+                }
+			}
+		}, err => ret.error(err), () => ret.complete());
+
+		ret.subscribe();
+		return ret.toPromise();
+	}
+
+    public async createTar(): Promise<Readable> {
+		const list = await this.walk().pipe(
+			pluck('file'),
+			map(x => p.relative(this.path, x)),
+			toArray())
+			.toPromise();
+
+		console.log(`Tar-ing ${this.path}...`);
+		return tar.create({
+			gzip: true,
+			cwd: this.path,
+			noDirRecurse: true,
+		},
+			list
+		)
+	}
+
+/*
     async package(sourcePath: string) {
-        return readdir(sourcePath, [
-            (file: string, stats: asyncfile.Stats) =>
+        return asyncReadDir(sourcePath, [
+            (file: FileEntry) =>
                 !relative(sourcePath, file).startsWith('Assets') || file.endsWith('.pdb') || file.endsWith('.meta'),
         ]).then(f => {
             const outputDirs = new Set<string>();
@@ -51,11 +161,11 @@ class TreeWalker {
                         await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
                         fs.copyFileSync(file, targetasset);
                         fs.copyFileSync(metafile, targetmeta);
-                        if (path.extname(file) === '.png') {
+                        if (p.extname(file) === '.png') {
                             fs.copyFileSync(join(sourcePath, 'preview.png'), targetpreview);
                         }
 
-                        const dir = path.dirname(file);
+                        const dir = p.dirname(file);
                         if (!dirs.has(dir)) {
                             dirs.add(dir);
                         }
@@ -79,7 +189,7 @@ class TreeWalker {
                         await asyncfile.mkdir(targetdir);
                         fs.copyFileSync(metafile, targetmeta);
                         await asyncfile.writeTextFile(targetname, rel.replace(/\\/g, '/'));
-                        const dirname = path.dirname(targetname);
+                        const dirname = p.dirname(targetname);
                         if (!outputDirs.has(dirname)) {
                             outputDirs.add(dirname);
                         }
@@ -112,6 +222,7 @@ class TreeWalker {
                 });
         });
     }
+    */
 }
 
 const optionDefinitions = [
@@ -155,20 +266,23 @@ if (!options.path || !asyncfile.exists(options.path) || !options.file || !option
     process.exit(-1);
 }
 
-const sourcePath: string = resolve(options.path);
-const targetZipPath: string = join(options.out, `${options.file}.unitypackage`);
-const targetMd5Path: string = join(options.out, `${options.file}.unitypackage.md5`);
+const sourcePath: string = p.resolve(options.path);
+const targetZipPath: string = p.join(options.out, `${options.file}.unitypackage`);
+const targetMd5Path: string = p.join(options.out, `${options.file}.unitypackage.md5`);
 
 (async () => {
-    const walker = new TreeWalker();
+    const packagedPath = await TreeWalker.getTempDir();
+    await TreeWalker.copy(sourcePath, packagedPath, ["/*", "/*/", "!/Assets/", "*.meta", "*.pdb"]);
 
-    let zip = await walker.package(sourcePath);
+    let zip = await new TreeWalker(packagedPath).createTar();
 
-    asyncfile.mkdirp(path.dirname(targetZipPath)).then(() => {
-        zip.pipe(asyncfile.createWriteStream(targetZipPath)).on('finish', async () => {
-            const hash = md5(await asyncfile.readFile(targetZipPath));
-            await asyncfile.writeTextFile(targetMd5Path, hash);
-            console.log(`${targetZipPath} and ${targetMd5Path} created`);
-        });
+    await asyncfile.mkdirp(p.dirname(targetZipPath))
+
+    zip
+     .pipe(asyncfile.createWriteStream(targetZipPath))
+     .on('finish', async () => {
+        const hash = md5(await asyncfile.readFile(targetZipPath));
+        await asyncfile.writeTextFile(targetMd5Path, hash);
+        console.log(`${targetZipPath} and ${targetMd5Path} created`);
     });
 })();
