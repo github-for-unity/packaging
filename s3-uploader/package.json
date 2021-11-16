@@ -16,7 +16,7 @@
     "@types/request-promise": "^4.1.42",
     "@types/tmp": "^0.0.33",
     "async-file": "^2.0.2",
-    "aws-sdk": "^2.384.0",
+    "aws-sdk": "^2.814.0",
     "command-line-args": "^5.0.2",
     "command-line-usage": "^5.0.5",
     "recursive-readdir": "^2.2.2",
